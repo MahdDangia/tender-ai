@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Panel - TenderAI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen p-8">
+    <div class="max-w-5xl mx-auto space-y-6">
+        <div class="flex justify-between items-center border-b border-gray-800 pb-4">
+            <h1 class="text-3xl font-bold">Agency Admin Dashboard</h1>
+            <a href="/logout" class="bg-red-600 hover:bg-red-500 px-4 py-2 rounded-lg text-sm font-medium">Logout</a>
+        </div>
+
+        <div class="grid grid-cols-2 gap-6">
+            <div class="bg-gray-800 border border-gray-700 p-6 rounded-xl">
+                <h3 class="text-gray-400 text-sm font-semibold uppercase">Total Companies</h3>
+                <p class="text-4xl font-extrabold text-white mt-2">{{ companies | length }}</p>
+            </div>
+            <div class="bg-gray-800 border border-gray-700 p-6 rounded-xl">
+                <h3 class="text-gray-400 text-sm font-semibold uppercase">Total Tenders Analyzed</h3>
+                <p class="text-4xl font-extrabold text-blue-400 mt-2">{{ tenders | length }}</p>
+            </div>
+        </div>
+
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-6">
+            <h2 class="text-xl font-bold mb-4">Registered Construction Companies</h2>
+            <table class="w-full text-left text-sm text-gray-300">
+                <thead class="bg-gray-900 uppercase text-xs text-gray-400">
+                    <tr>
+                        <th class="p-3">ID</th>
+                        <th class="p-3">Company Name</th>
+                        <th class="p-3">Email</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-700">
+                    {% for comp in companies %}
+                    <tr>
+                        <td class="p-3">{{ comp.id }}</td>
+                        <td class="p-3 font-semibold text-white">{{ comp.company_name }}</td>
+                        <td class="p-3">{{ comp.email }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
