@@ -1,0 +1,24 @@
+[project]
+name = "tender-ai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Mahd Ali", email = "smahadali6@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "pymupdf>=2.0",
+]
+
+[project.scripts]
+tender-ai = "tender_ai:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.ruff.lint]
+ignore = [
+    "B008" # Allow function calls in default arguments (used by FastAPI Depends)
+]

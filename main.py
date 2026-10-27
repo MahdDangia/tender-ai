@@ -2,9 +2,10 @@ import datetime
 import hashlib
 import hmac
 import os
+import traceback
 from functools import lru_cache
 
-import fitz  # PyMuPDF
+import pymupdf as mupdf
 from dotenv import load_dotenv
 from fastapi import (
     Depends,
@@ -147,7 +148,6 @@ def sign_company_cookie(company_id: int) -> str:
         hashlib.sha256,
     ).hexdigest()
     return f"{company_id}:{digest}"
-z
 
 def get_company_id_from_cookie(request: Request) -> int | None:
     raw_value = request.cookies.get("company_id")
@@ -313,60 +313,79 @@ async def analyze_tender(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    current_company = get_current_company(request, db)
-    if current_company is None:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
-
     try:
+        current_company = get_current_company(request, db)
+        if current_company is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        if not file.filename or not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
         pdf_bytes = await file.read()
         if not pdf_bytes:
             raise HTTPException(status_code=400, detail="Uploaded PDF is empty")
 
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Invalid or unreadable PDF file") from exc
+        # Open PDF with pymupdf
+        try:
+            doc = mupdf.open(stream=pdf_bytes, filetype="pdf")
+            full_text = "".join(page.get_text() for page in doc)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid or unreadable PDF file") from exc
+        finally:
+            if 'doc' in locals() and doc:
+                doc.close()
 
-    try:
-        full_text = "".join(page.get_text() for page in doc)
-    finally:
-        doc.close()
+        if not full_text.strip():
+            raise HTTPException(status_code=400, detail="The PDF contains no readable text.")
 
-    try:
+        # Call OpenAI
         client = get_openai_client()
-        completion = client.beta.chat.completions.parse(
-            model="gpt-4o",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a senior construction estimator analyzing a tender document. Extract exact project metrics.",
-                },
-                {
-                    "role": "user",
-                    "content": f"Analyze this construction tender document: {full_text[:25000]}",
-                },
-            ],
-            response_format=TenderSummary,
+        try:
+            completion = client.beta.chat.completions.parse(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a senior construction estimator analyzing a tender document. Extract exact project metrics.",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Analyze this construction tender document: {full_text[:25000]}",
+                    },
+                ],
+                response_format=TenderSummary,
+            )
+        except Exception as exc:
+            print("--- OPENAI API ERROR ---")
+            traceback.print_exc()
+            raise HTTPException(
+                status_code=502,
+                detail=f"AI analysis failed: {exc!s}",
+            ) from exc
+
+        parsed = completion.choices[0].message.parsed
+        if parsed is None:
+            raise HTTPException(status_code=502, detail="AI returned no structured analysis")
+
+        analysis_result = parsed.model_dump()
+
+        # Save to Database
+        new_tender = Tender(
+            project_name=analysis_result["project_name"],
+            submission_deadline=analysis_result["submission_deadline"],
+            company_id=current_company.id,
         )
+        db.add(new_tender)
+        db.commit()
+        
+        return analysis_result
+
+    except HTTPException as he:
+        raise he
     except Exception as exc:
+        print("--- DETAILED ANALYZE ERROR ---")
+        traceback.print_exc()
         raise HTTPException(
-            status_code=502,
-            detail="AI analysis failed. Please try again with a valid tender PDF.",
+            status_code=500,
+            detail=f"Internal Server Error: {exc!s}",
         ) from exc
-
-    parsed = completion.choices[0].message.parsed
-    if parsed is None:
-        raise HTTPException(status_code=502, detail="AI returned no structured analysis")
-
-    analysis_result = parsed.model_dump()
-
-    new_tender = Tender(
-        project_name=analysis_result["project_name"],
-        submission_deadline=analysis_result["submission_deadline"],
-        company_id=current_company.id,
-    )
-    db.add(new_tender)
-    db.commit()
-    return analysis_result

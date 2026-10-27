@@ -1,0 +1,8 @@
+        raise HTTPException(
+            status_code=502,
+            detail="AI analysis failed. Please try again with a valid tender PDF.",
+        ) from exc
+
+    parsed = completion.choices[0].message.parsed
+    if parsed is None:
+        raise HTTPException(status_code=502, detail="AI returned no structured analysis")
